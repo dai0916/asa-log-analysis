@@ -46,10 +46,6 @@ html = """
 </html>
 """[1:-1]
 
-def toDateTime (log_datetime):
-    date = (log_datetime.split(' '))[3:]
-    return datetime.datetime.strptime (' '.join (date), "%b %d %H:%M:%S %Z")
-
 def extract_start_session_from_log(line):
     sep = line.rstrip().split (': ')
     result = {}
@@ -58,7 +54,7 @@ def extract_start_session_from_log(line):
     #
     result["Message"]  = sep[2]
     result["Class"]    = sep[1]
-    result["DateTime"] = toDateTime (sep[0])
+    result["DateTime"] = datetime.datetime.strptime (sep[0], "%Y %b %d %H:%M:%S %Z")
     #
     matches = re.match (r'Group <(.*?)> User <(.*?)> IP <(.*?)>', sep[2])
     result["Group"]    = matches.group(1)
@@ -74,7 +70,7 @@ def extract_terminate_session_from_log(line):
     #
     result["Message"]  = ': '.join (sep[2:])
     result["Class"]    = sep[1]
-    result["DateTime"] = toDateTime (sep[0])
+    result["DateTime"] = datetime.datetime.strptime (sep[0], "%Y %b %d %H:%M:%S %Z")
     #
     matches = re.match (r'Group = (.*?), Username = (.*?), IP = (.*?), Session disconnected\. Session Type: (.*?), Duration: (.*?), ', result["Message"])
     result["Group"]         = matches.group(1)
