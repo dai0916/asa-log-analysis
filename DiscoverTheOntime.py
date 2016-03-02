@@ -1,8 +1,9 @@
 #! /usr/bin/env python
 
 #
-# DiscoverTheOntime.py --- Discover the ontime with users from ASA syslog
+# DiscoverTheOntime.py --- Discover the ontime with users from switch log
 #
+import os
 import sys
 import re
 import datetime
@@ -55,7 +56,7 @@ def extract_start_session_from_log(line):
         sep = line.rstrip().split (': ')
         result = {}
         result["terminate log"] = None
-        result["line"]          = line.rstrip()
+        result["line"]          = line
         #
         result["Message"]  = sep[2]
         result["Class"]    = sep[1]
@@ -73,7 +74,7 @@ def extract_terminate_session_from_log(line):
         sep = line.rstrip().split (': ')
         result = {}
         result["start log"]     = None
-        result["line"]          = line.rstrip()
+        result["line"]          = line
         #
         result["Message"]  = ': '.join (sep[2:])
         result["Class"]    = sep[1]
@@ -106,11 +107,17 @@ for start in start_session_logs:
         start["terminate log"] = term
         term["start log"] = start
 
+pipR, pipW = os.pipe ()
+os.close (pipR)
+os.dup2 (3, pipW)
+unterminated_file = os.fdopen (pipW, "w")
 
 for item in itertools.ifilter(lambda it:it["terminate log"] == None, start_session_logs):
-    print >> sys.stderr, "This record,\n{0}\n has no relationship!".format (item["line"])
+    print >> unterminated_file, item["line"]
 for item in itertools.ifilter(lambda it:it["start log"] == None, terminate_session_logs):
-    print >> sys.stderr, "This record,\n{0}\n has no relationship!".format (item["line"])
+    print >> sys.stderr, "This record,"
+    print >> sys.stderr, item["line"] ,
+    print >> sys.stderr, " has no relationship!"
 
 buf = []
 for num, item in enumerate (start_session_logs):
