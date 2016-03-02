@@ -46,59 +46,51 @@ html = """
 </html>
 """[1:-1]
 
-def toDateTime (log_datetime):
-    date = (log_datetime.split(' '))[3:]
-    return datetime.datetime.strptime (' '.join (date), "%b %d %H:%M:%S %Z")
-
 def extract_start_session_from_log(line):
-    result = None
-    if re.search (r'%ASA-[^:]+?-113039:', line):
-        sep = line.rstrip().split (': ')
-        result = {}
-        result["terminate log"] = None
-        result["line"]          = line
-        #
-        result["Message"]  = sep[2]
-        result["Class"]    = sep[1]
-        result["DateTime"] = toDateTime (sep[0])
-        #
-        matches = re.match (r'Group <(.*?)> User <(.*?)> IP <(.*?)>', sep[2])
-        result["Group"]    = matches.group(1)
-        result["User"]     = matches.group(2)
-        result["IP"]       = matches.group(3)
+    sep = line.rstrip().split (': ')
+    result = {}
+    result["terminate log"] = None
+    result["line"]          = line
+    #
+    result["Message"]  = sep[2]
+    result["Class"]    = sep[1]
+    result["DateTime"] = datetime.datetime.strptime (sep[0], "%Y %b %d %H:%M:%S %Z")
+    #
+    matches = re.match (r'Group <(.*?)> User <(.*?)> IP <(.*?)>', sep[2])
+    result["Group"]    = matches.group(1)
+    result["User"]     = matches.group(2)
+    result["IP"]       = matches.group(3)
     return result
 
 def extract_terminate_session_from_log(line):
-    result = None
-    if re.search (r'%ASA-[^:]+?-113019:', line):
-        sep = line.rstrip().split (': ')
-        result = {}
-        result["start log"]     = None
-        result["line"]          = line
-        #
-        result["Message"]  = ': '.join (sep[2:])
-        result["Class"]    = sep[1]
-        result["DateTime"] = toDateTime (sep[0])
-        #
-        matches = re.match (r'Group = (.*?), Username = (.*?), IP = (.*?), Session disconnected\. Session Type: (.*?), Duration: (.*?), ', result["Message"])
-        result["Group"]         = matches.group(1)
-        result["User"]          = matches.group(2)
-        result["IP"]            = matches.group(3)
-        result["SessionType"]   = matches.group(4)
-        result["Duration"]      = matches.group(5)
+    sep = line.rstrip().split (': ')
+    result = {}
+    result["start log"]     = None
+    result["line"]          = line
+    #
+    result["Message"]  = ': '.join (sep[2:])
+    result["Class"]    = sep[1]
+    result["DateTime"] = datetime.datetime.strptime (sep[0], "%Y %b %d %H:%M:%S %Z")
+    #
+    matches = re.match (r'Group = (.*?), Username = (.*?), IP = (.*?), Session disconnected\. Session Type: (.*?), Duration: (.*?), ', result["Message"])
+    result["Group"]         = matches.group(1)
+    result["User"]          = matches.group(2)
+    result["IP"]            = matches.group(3)
+    result["SessionType"]   = matches.group(4)
+    result["Duration"]      = matches.group(5)
     return result
 
 start_session_logs = []
 terminate_session_logs = []
 
 for line in sys.stdin:
-    start_session = extract_start_session_from_log (line)
-    if start_session:
-        start_session_logs.append (start_session)
+    if re.search (r'%ASA-[^:]+?-113039:', line):
+        start_session_logs.append (
+                extract_start_session_from_log (line))
     #
-    terminate_session = extract_terminate_session_from_log (line)
-    if terminate_session:
-        terminate_session_logs.append (terminate_session)
+    if re.search (r'%ASA-[^:]+?-113019:', line):
+        terminate_session_logs.append (
+                extract_terminate_session_from_log(line))
 
 #
 for start in start_session_logs:
