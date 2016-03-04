@@ -13,7 +13,7 @@ from optparse import OptionParser
 usage = "usage: %prog [options] keyword"
 
 
-def extract_start_session_from_log(line, year):
+def extract_start_session_from_log(line, datetm):
     sep = line.rstrip().split (': ')
     result = {}
     result["terminate log"] = None
@@ -21,7 +21,7 @@ def extract_start_session_from_log(line, year):
     #
     result["Message"]  = sep[2]
     result["Class"]    = sep[1]
-    result["DateTime"] = dt.strptime (sep[0], "%b %d %H:%M:%S %Z").replace (year)
+    result["DateTime"] = datetm
     #
     matches = re.match (r'Group <(.*?)> User <(.*?)> IP <(.*?)>', sep[2])
     result["Group"]    = matches.group(1)
@@ -29,7 +29,7 @@ def extract_start_session_from_log(line, year):
     result["IP"]       = matches.group(3)
     return result
 
-def extract_terminate_session_from_log(line, year):
+def extract_terminate_session_from_log(line, datetm):
     sep = line.rstrip().split (': ')
     result = {}
     result["start log"]     = None
@@ -37,7 +37,7 @@ def extract_terminate_session_from_log(line, year):
     #
     result["Message"]  = ': '.join (sep[2:])
     result["Class"]    = sep[1]
-    result["DateTime"] = dt.strptime (sep[0], "%b %d %H:%M:%S %Z").replace (year)
+    result["DateTime"] = datetm
     #
     matches = re.match (r'Group = (.*?), Username = (.*?), IP = (.*?), Session disconnected\. Session Type: (.*?), Duration: (.*?), ', result["Message"])
     result["Group"]         = matches.group(1)
@@ -48,7 +48,7 @@ def extract_terminate_session_from_log(line, year):
     return result
 
 #
-#
+# entry point
 #
 parser = OptionParser (usage)
 
@@ -63,18 +63,41 @@ parser.add_option(
 
 (options, args) = parser.parse_args()
 
+#
+# main loop
+#
 start_session_logs = []
 terminate_session_logs = []
+past_tm = None
 
 for line in sys.stdin:
+    datetm_str = line.rstrip().split (': ')[0]
+    if not datetm_str:
+        continue
+    datetm = dt.strptime (datetm_str, "%b %d %H:%M:%S %Z").replace (options.year)
+    try:
+        if (datetm - past_tm).days < 0:
+            #
+            # over the new year
+            #
+            for it in start_session_logs:
+                it["DateTime"] = it["DateTime"].replace(options.year - 1)
+            for it in terminate_session_logs:
+                it["DateTime"] = it["DateTime"].replace(options.year - 1)
+    except TypeError:
+        pass
+    past_tm = datetm
+    #
     if re.search (r'%ASA-[^:]+?-113039:', line):
         start_session_logs.append (
-                extract_start_session_from_log (line, options.year))
+                extract_start_session_from_log (line, datetm))
     #
     if re.search (r'%ASA-[^:]+?-113019:', line):
         terminate_session_logs.append (
-                extract_terminate_session_from_log (line, options.year))
+                extract_terminate_session_from_log (line, datetm))
 
+#
+# combine the relationship
 #
 for start in start_session_logs:
     term = next(itertools.ifilter(lambda it:it["DateTime"] >= start["DateTime"] and it["IP"] == start["IP"], terminate_session_logs), None)
@@ -89,11 +112,15 @@ unterminated_file = os.fdopen (pipW, "w")
 
 for item in itertools.ifilter(lambda it:it["terminate log"] == None, start_session_logs):
     print >> unterminated_file, item["line"]
+#
 for item in itertools.ifilter(lambda it:it["start log"] == None, terminate_session_logs):
     print >> sys.stderr, "This record,"
     print >> sys.stderr, item["line"] ,
     print >> sys.stderr, " has no relationship!"
 
+#
+# To output
+#
 buf = []
 for num, item in enumerate (start_session_logs):
     st = item
