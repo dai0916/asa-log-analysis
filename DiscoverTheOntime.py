@@ -1,45 +1,51 @@
 #! /usr/bin/env python
 
 #
-# DiscoverTheOntime.py --- Discover the ontime with users from ASA syslog
+# DiscoverTheOntime.py --- Discover the ontime with users from switch log
 #
 import os
 import sys
 import re
 import itertools
-from datetime import datetime as dt
+import datetime
 from optparse import OptionParser
 
-usage = "usage: %prog [options] keyword"
+usage = "usage: %prog [options] 3> [unterminated log file]"
 
+def fromISO8601ExtDateTime(text):
+    sep = text.split ('+')
+    if sep[1] != "09:00":
+        raise ValueError, "This program only timezone +09:00"
+    else:
+        result = datetime.datetime.strptime (sep[0], "%Y-%m-%dT%H:%M:%S")
+        return result
 
-def extract_start_session_from_log(line, year):
-    sep = line.rstrip().split (': ')
+def extract_start_session_from_log(line, timeField, ipField, classField, messageField):
     result = {}
     result["terminate log"] = None
     result["line"]          = line
     #
-    result["Message"]  = sep[2]
-    result["Class"]    = sep[1]
-    result["DateTime"] = dt.strptime (sep[0], "%b %d %H:%M:%S %Z").replace (year)
+    result["Message"]  = messageField
+    result["Class"]    = classField
+    result["DateTime"] = fromISO8601ExtDateTime (timeField)
     #
-    matches = re.match (r'Group <(.*?)> User <(.*?)> IP <(.*?)>', sep[2])
+    matches = re.match (r'Group <(.*?)> User <(.*?)> IP <(.*?)>', messageField)
     result["Group"]    = matches.group(1)
     result["User"]     = matches.group(2)
     result["IP"]       = matches.group(3)
     return result
 
-def extract_terminate_session_from_log(line, year):
-    sep = line.rstrip().split (': ')
+def extract_terminate_session_from_log(line, timeField, ipField, classField, messageField):
     result = {}
     result["start log"]     = None
     result["line"]          = line
     #
-    result["Message"]  = ': '.join (sep[2:])
-    result["Class"]    = sep[1]
-    result["DateTime"] = dt.strptime (sep[0], "%b %d %H:%M:%S %Z").replace (year)
+    result["Message"]  = messageField
+    result["Class"]    = classField
+    result["DateTime"] = fromISO8601ExtDateTime (timeField)
     #
-    matches = re.match (r'Group = (.*?), Username = (.*?), IP = (.*?), Session disconnected\. Session Type: (.*?), Duration: (.*?), ', result["Message"])
+    pattern = r'Group = (.*?), Username = (.*?), IP = (.*?), Session disconnected\. Session Type: (.*?), Duration: (.*?), '
+    matches = re.match (pattern, messageField)
     result["Group"]         = matches.group(1)
     result["User"]          = matches.group(2)
     result["IP"]            = matches.group(3)
@@ -47,8 +53,9 @@ def extract_terminate_session_from_log(line, year):
     result["Duration"]      = matches.group(5)
     return result
 
+
 #
-#
+# entry point
 #
 parser = OptionParser (usage)
 
@@ -56,25 +63,32 @@ parser.add_option(
     "-y", "--year",
     action="store",
     type="int",
-    default= dt.today ().year,
+    default= datetime.datetime.today ().year,
     dest="year",
     help="set year of log date, as default is this year."
 )
 
 (options, args) = parser.parse_args()
 
+#
+# main loop
+#
 start_session_logs = []
 terminate_session_logs = []
 
 for line in sys.stdin:
-    if re.search (r'%ASA-[^:]+?-113039:', line):
-        start_session_logs.append (
-                extract_start_session_from_log (line, options.year))
+    m = re.match (r'([^ ]+) ?([^ ]+) ?(%ASA-[^:]+?-113039): (.*)$', line)
+    if m:
+        session = extract_start_session_from_log (line, m.group(1), m.group(2), m.group(3), m.group(4))
+        start_session_logs.append (session)
     #
-    if re.search (r'%ASA-[^:]+?-113019:', line):
-        terminate_session_logs.append (
-                extract_terminate_session_from_log (line, options.year))
+    m = re.match (r'([^ ]+) ?([^ ]+) ?(%ASA-[^:]+?-113019): (.*)$', line)
+    if m:
+        session = extract_terminate_session_from_log (line, m.group(1), m.group(2), m.group(3), m.group(4))
+        terminate_session_logs.append (session)
 
+#
+# combine the relationship
 #
 for start in start_session_logs:
     term = next(itertools.ifilter(lambda it:it["DateTime"] >= start["DateTime"] and it["IP"] == start["IP"], terminate_session_logs), None)
@@ -89,11 +103,15 @@ unterminated_file = os.fdopen (pipW, "w")
 
 for item in itertools.ifilter(lambda it:it["terminate log"] == None, start_session_logs):
     print >> unterminated_file, item["line"],
+#
 for item in itertools.ifilter(lambda it:it["start log"] == None, terminate_session_logs):
     print >> sys.stderr, "This record,"
     print >> sys.stderr, item["line"] ,
     print >> sys.stderr, " has no relationship!"
 
+#
+# To output
+#
 buf = []
 for num, item in enumerate (start_session_logs):
     st = item
