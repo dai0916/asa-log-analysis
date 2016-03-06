@@ -7,45 +7,51 @@ import os
 import sys
 import re
 import itertools
-from datetime import datetime as dt
+import datetime
 from optparse import OptionParser
 
-usage = "usage: %prog [options] keyword"
+usage = "usage: %prog [options] 3> [unterminated log file]"
 
+def fromISO8601ExtDateTime(text):
+    sep = text.split ('+')
+    result = datetime.datetime.strptime (sep[0], "%Y-%m-%dT%H:%M:%S")
+    tz = datetime.datetime.strptime (sep[1], "%H:%M")
+    result = result + datetime.timedelta (hours=tz.hour, minutes=tz.minute)
+    return result
 
-def extract_start_session_from_log(line, datetm):
-    sep = line.rstrip().split (': ')
+def extract_start_session_from_log(line, timeField, ipField, classField, messageField):
     result = {}
     result["terminate log"] = None
     result["line"]          = line
     #
-    result["Message"]  = sep[2]
-    result["Class"]    = sep[1]
-    result["DateTime"] = datetm
+    result["Message"]  = messageField
+    result["Class"]    = classField
+    result["DateTime"] = fromISO8601ExtDateTime (timeField)
     #
-    matches = re.match (r'Group <(.*?)> User <(.*?)> IP <(.*?)>', sep[2])
+    matches = re.match (r'Group <(.*?)> User <(.*?)> IP <(.*?)>', messageField)
     result["Group"]    = matches.group(1)
     result["User"]     = matches.group(2)
     result["IP"]       = matches.group(3)
     return result
 
-def extract_terminate_session_from_log(line, datetm):
-    sep = line.rstrip().split (': ')
+def extract_terminate_session_from_log(line, timeField, ipField, classField, messageField):
     result = {}
     result["start log"]     = None
     result["line"]          = line
     #
-    result["Message"]  = ': '.join (sep[2:])
-    result["Class"]    = sep[1]
-    result["DateTime"] = datetm
+    result["Message"]  = messageField
+    result["Class"]    = classField
+    result["DateTime"] = fromISO8601ExtDateTime (timeField)
     #
-    matches = re.match (r'Group = (.*?), Username = (.*?), IP = (.*?), Session disconnected\. Session Type: (.*?), Duration: (.*?), ', result["Message"])
+    pattern = r'Group = (.*?), Username = (.*?), IP = (.*?), Session disconnected\. Session Type: (.*?), Duration: (.*?), '
+    matches = re.match (pattern, messageField)
     result["Group"]         = matches.group(1)
     result["User"]          = matches.group(2)
     result["IP"]            = matches.group(3)
     result["SessionType"]   = matches.group(4)
     result["Duration"]      = matches.group(5)
     return result
+
 
 #
 # entry point
@@ -56,7 +62,7 @@ parser.add_option(
     "-y", "--year",
     action="store",
     type="int",
-    default= dt.today ().year,
+    default= datetime.datetime.today ().year,
     dest="year",
     help="set year of log date, as default is this year."
 )
@@ -68,33 +74,17 @@ parser.add_option(
 #
 start_session_logs = []
 terminate_session_logs = []
-past_tm = None
 
 for line in sys.stdin:
-    datetm_str = line.rstrip().split (': ')[0]
-    if not datetm_str:
-        continue
-    datetm = dt.strptime (datetm_str, "%b %d %H:%M:%S %Z").replace (options.year)
-    try:
-        if (datetm - past_tm).days < 0:
-            #
-            # over the new year
-            #
-            for it in start_session_logs:
-                it["DateTime"] = it["DateTime"].replace(options.year - 1)
-            for it in terminate_session_logs:
-                it["DateTime"] = it["DateTime"].replace(options.year - 1)
-    except TypeError:
-        pass
-    past_tm = datetm
+    m = re.match (r'([^ ]+) ?([^ ]+) ?(%ASA-[^:]+?-113039): (.*)$', line)
+    if m:
+        session = extract_start_session_from_log (line, m.group(1), m.group(2), m.group(3), m.group(4))
+        start_session_logs.append (session)
     #
-    if re.search (r'%ASA-[^:]+?-113039:', line):
-        start_session_logs.append (
-                extract_start_session_from_log (line, datetm))
-    #
-    if re.search (r'%ASA-[^:]+?-113019:', line):
-        terminate_session_logs.append (
-                extract_terminate_session_from_log (line, datetm))
+    m = re.match (r'([^ ]+) ?([^ ]+) ?(%ASA-[^:]+?-113019): (.*)$', line)
+    if m:
+        session = extract_terminate_session_from_log (line, m.group(1), m.group(2), m.group(3), m.group(4))
+        terminate_session_logs.append (session)
 
 #
 # combine the relationship
