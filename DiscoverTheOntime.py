@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 #
-# DiscoverTheOntime.py --- Discover the ontime with users from switch log
+# DiscoverTheOntime.py --- Discover the ontime with users from ASA syslog
 #
 import os
 import sys
