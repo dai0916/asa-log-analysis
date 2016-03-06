@@ -102,7 +102,7 @@ os.dup2 (3, pipW)
 unterminated_file = os.fdopen (pipW, "w")
 
 for item in itertools.ifilter(lambda it:it["terminate log"] == None, start_session_logs):
-    print >> unterminated_file, item["line"]
+    print >> unterminated_file, item["line"],
 #
 for item in itertools.ifilter(lambda it:it["start log"] == None, terminate_session_logs):
     print >> sys.stderr, "This record,"
