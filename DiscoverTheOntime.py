@@ -14,10 +14,11 @@ usage = "usage: %prog [options] 3> [unterminated log file]"
 
 def fromISO8601ExtDateTime(text):
     sep = text.split ('+')
-    result = datetime.datetime.strptime (sep[0], "%Y-%m-%dT%H:%M:%S")
-    tz = datetime.datetime.strptime (sep[1], "%H:%M")
-    result = result + datetime.timedelta (hours=tz.hour, minutes=tz.minute)
-    return result
+    if sep[1] != "09:00":
+        raise ValueError, "This program only timezone +09:00"
+    else:
+        result = datetime.datetime.strptime (sep[0], "%Y-%m-%dT%H:%M:%S")
+        return result
 
 def extract_start_session_from_log(line, timeField, ipField, classField, messageField):
     result = {}
