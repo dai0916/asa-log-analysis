@@ -9,6 +9,7 @@ import re
 import itertools
 import datetime
 from optparse import OptionParser
+import json
 
 usage = "usage: %prog [options] 3> [unterminated log file]"
 
@@ -112,62 +113,29 @@ for item in itertools.ifilter(lambda it:it["start log"] == None, terminate_sessi
 #
 # To output
 #
-buf = []
-for num, item in enumerate (start_session_logs):
-    st = item
-    tm = item["terminate log"]
-    text = "[ '{0}', '{1}'".format (1+num, st["User"])
-    text = text + ", new Date({0})".format (st["DateTime"].strftime ('%Y, %m, %d, %H, %M, %S'))
-    if tm:
-        text = text + ", new Date({0})".format (tm["DateTime"].strftime ('%Y, %m, %d, %H, %M, %S'))
-        text = text + "],"
-        buf.append (text)
+output_logs = []
+for it in start_session_logs:
+    if it["terminate log"]:
+        container = {}
+        container.update ({    "start_time": it["DateTime"]})
+        container.update ({"terminate_time": it["terminate log"]["DateTime"]})
+        container.update ({          "User": it["terminate log"]["User"]})
+        container.update ({            "IP": it["terminate log"]["IP"]})
+        container.update ({   "SessionType": it["terminate log"]["SessionType"]})
+        container.update ({      "Duration": it["terminate log"]["Duration"]})
+        output_logs.append (container)
+ 
+def default_datetime(o):
+    if isinstance(o, datetime.datetime):
+        return o.isoformat()
+    raise TypeError(repr(o) + " is not JSON serializable")
 
-if buf:
-    buf[-1] = buf[-1].rstrip(',')
+json.dump (output_logs, sys.stdout,
+        ensure_ascii=True,
+        check_circular=True,
+        separators=None,
+        encoding='utf-8',
+        default=default_datetime,
+        sort_keys=False,
+        indent=4)
 
-#print start_and_term_relationship
-
-datarows = "\n            ".join (buf)
-
-#
-#
-#
-html = """
-<html>
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<script type="text/javascript" src="https://www.google.com/jsapi"></script>
-<script type="text/javascript">
-    google.load('visualization', '1', {{'packages':['timeline']}});
-    google.setOnLoadCallback(drawChart);
-
-    function drawChart() {{
-        var data = new google.visualization.DataTable();
-        data.addColumn({{ type: 'string', id: 'Number' }});
-        data.addColumn({{ type: 'string', id: 'Name' }});
-        data.addColumn({{ type: 'date', id: 'Start' }});
-        data.addColumn({{ type: 'date', id: 'End' }});
-        data.addRows([
-            {0}
-        ]);
-
-        var chart = new google.visualization.Timeline(document.getElementById('chart_div'));
-
-        var options = {{
-            timeline: {{
-                showRowLabels: false,
-            }}
-        }};
-
-        chart.draw(data, options);
-      }}
-</script>
-</head>
-<body>
-    <div id="chart_div" style="height:100%"></div>
-</body>
-</html>
-"""[1:-1]
-
-print html.format(datarows)
