@@ -35,79 +35,80 @@ terminate_session_logs = []
 #
 # log file format error
 #
-class LogFileFormatError < StandardError; end
+class LogFileFormatError < StandardError;
+end
 
 #
 # main loop
 #
 STDIN.each_line do |line|
-    begin
-        if line.include?('-113039:') then
-            #開始ログ行を取り出す
-            m = re_start_line.match(line) or
-                raise LogFileFormatError, "L##{STDIN.lineno} - Sorry, unsupported log format."
-            start_session_logs.push({
-                :TerminateLog => nil,
-                        :Line => line,
-                    :DateTime => Time.iso8601(m[1]),
-                       :Class => m[2],
-                       :Group => m[3],
-                        :User => m[4],
-                          :IP => m[5],
-                    :Leftover => m[6],
-            })
-        elsif line.include?('-113019:') then
-            #終了ログ行を取り出す
-            m = re_term_line.match(line) or
-                raise LogFileFormatError, "L##{STDIN.lineno} - Sorry, unsupported log format."
-            terminate_session_logs.push({
-                :StartLog => nil,
-                    :Line => line,
-                :DateTime => Time.iso8601(m[1]),
-                   :Class => m[2],
-                   :Group => m[3],
-                    :User => m[4],
-                      :IP => m[5],
-             :SessionType => m[6],
-                :Duration => m[7],
-                :Leftover => m[8],
-            })
-        end
-    rescue LogFileFormatError => ex
-        STDERR.puts ex
+  begin
+    if line.include?('-113039:') then
+      #開始ログ行を取り出す
+      m = re_start_line.match(line) or
+          raise LogFileFormatError, "L##{STDIN.lineno} - Sorry, unsupported log format."
+      start_session_logs.push({
+                                  :TerminateLog => nil,
+                                  :Line => line,
+                                  :DateTime => Time.iso8601(m[1]),
+                                  :Class => m[2],
+                                  :Group => m[3],
+                                  :User => m[4],
+                                  :IP => m[5],
+                                  :Leftover => m[6],
+                              })
+    elsif line.include?('-113019:') then
+      #終了ログ行を取り出す
+      m = re_term_line.match(line) or
+          raise LogFileFormatError, "L##{STDIN.lineno} - Sorry, unsupported log format."
+      terminate_session_logs.push({
+                                      :StartLog => nil,
+                                      :Line => line,
+                                      :DateTime => Time.iso8601(m[1]),
+                                      :Class => m[2],
+                                      :Group => m[3],
+                                      :User => m[4],
+                                      :IP => m[5],
+                                      :SessionType => m[6],
+                                      :Duration => m[7],
+                                      :Leftover => m[8],
+                                  })
     end
+  rescue LogFileFormatError => ex
+    STDERR.puts ex
+  end
 end
 
 #
 # combine the relationship
 #
 start_session_logs.each do |start|
-    term = terminate_session_logs.find {|it| it[:DateTime] >= start[:DateTime] and it[:IP] === start[:IP]}
-    unless term.nil? then
-        start[:TerminateLog] = term
-        term[:StartLog] = start
-    end
+  term = terminate_session_logs.find { |it| it[:DateTime] >= start[:DateTime] and it[:IP] === start[:IP] }
+  unless term.nil? then
+    start[:TerminateLog] = term
+    term[:StartLog] = start
+  end
 end
 
 #
 # 3番への出力は次回実行に持ち越すログ行
 #
-IO.open( 3, mode="w" ) do |out|
-    nopair = start_session_logs.select {|it| it[:TerminateLog].nil?}
-    nopair.each do |item|
-        out.print item[:Line]
-    end
+IO.open(3, mode="w") do |out|
+  nopair = start_session_logs.select { |it| it[:TerminateLog].nil? }
+  nopair.each do |item|
+    out.print item[:Line]
+  end
 end
 
 #
 # 2番への出力は対応する開始ログ行が無かったもの
 #
-nopair = terminate_session_logs.select {|it| it[:StartLog].nil?}
+nopair = terminate_session_logs.select { |it| it[:StartLog].nil? }
 unless nopair.empty? then
-    warnings = nopair.inject("These records has no relationship!\n") do |acc, item|
-        acc += item[:Line]
-    end
-    STDERR.print warnings
+  warnings = nopair.inject("These records has no relationship!\n") do |acc, item|
+    acc += item[:Line]
+  end
+  STDERR.print warnings
 end
 
 #
@@ -115,14 +116,14 @@ end
 #
 buf = []
 start_session_logs.each do |item|
-    numb = buf.length
-    st = item
-    tm = item[:TerminateLog]
-    unless tm.nil? then
-        stime = st[:DateTime].getlocal.strftime('%Y, %m, %d, %H, %M, %S')
-        ttime = tm[:DateTime].getlocal.strftime('%Y, %m, %d, %H, %M, %S')
-        buf.push("[ '#{numb+1}', '#{st[:User]}', new Date(#{stime}), new Date(#{ttime})],")
-    end
+  numb = buf.length
+  st = item
+  tm = item[:TerminateLog]
+  unless tm.nil? then
+    stime = st[:DateTime].getlocal.strftime('%Y, %m, %d, %H, %M, %S')
+    ttime = tm[:DateTime].getlocal.strftime('%Y, %m, %d, %H, %M, %S')
+    buf.push("[ '#{numb+1}', '#{st[:User]}', new Date(#{stime}), new Date(#{ttime})],")
+  end
 end
 datarows = buf.join("\n            ")
 
