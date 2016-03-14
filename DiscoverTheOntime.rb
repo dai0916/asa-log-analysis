@@ -89,6 +89,9 @@ start_session_logs.each do |start|
     end
 end
 
+#
+# 3番への出力は次回実行に持ち越すログ行
+#
 IO.open( 3, mode="w" ) do |out|
     nopair = start_session_logs.select {|it| it[:TerminateLog].nil?}
     nopair.each do |item|
@@ -96,12 +99,14 @@ IO.open( 3, mode="w" ) do |out|
     end
 end
 
+#
+# 2番への出力は対応する開始ログ行が無かったもの
+#
 nopair = terminate_session_logs.select {|it| it[:StartLog].nil?}
-nopair.each do |item|
-    STDERR.puts "This record,"
-    STDERR.print item[:Line]
-    STDERR.puts " has no relationship!"
+warnings = nopair.inject("These records has no relationship!\n") do |acc, item|
+    acc += item[:Line]
 end
+STDERR.print warnings unless warnings.empty?
 
 #
 # To output
