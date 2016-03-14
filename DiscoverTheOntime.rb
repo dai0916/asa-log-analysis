@@ -103,10 +103,12 @@ end
 # 2番への出力は対応する開始ログ行が無かったもの
 #
 nopair = terminate_session_logs.select {|it| it[:StartLog].nil?}
-warnings = nopair.inject("These records has no relationship!\n") do |acc, item|
-    acc += item[:Line]
+unless nopair.empty? then
+    warnings = nopair.inject("These records has no relationship!\n") do |acc, item|
+        acc += item[:Line]
+    end
+    STDERR.print warnings
 end
-STDERR.print warnings unless warnings.empty?
 
 #
 # To output
